@@ -57,6 +57,7 @@ env/
 
 # dotenv
 .flaskenv
+.env
 
 # virtualenv
 venv/
