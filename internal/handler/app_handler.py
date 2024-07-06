@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass
 
 from injector import inject
+from uuid import UUID
 from openai import OpenAI
 
 from internal.exception import FailException
@@ -37,7 +38,7 @@ class AppHandler:
         app = self.app_service.delete_app(id)
         return success_message(f"应用已经成功删除，id为:{app.id}")
 
-    def completion(self):
+    def debug(self, app_id: UUID):
         """聊天接口"""
         # 1.提取从接口中获取的输入，POST
         req = CompletionReq()
@@ -49,13 +50,10 @@ class AppHandler:
         llm = ChatOpenAI(model="gpt-3.5-turbo-16k")
         parser = StrOutputParser()
 
-        # 3. 构建链
+        # 3.构建链
         chain = prompt | llm | parser
 
-        # 4. 调用链得到结果
+        # 4.调用链得到结果
         content = chain.invoke({"query": req.query.data})
+        print('生成内容:', content)
         return success_json({"content": content})
-
-    def ping(self):
-        raise FailException("数据未找到")
-        # return {"ping": "pong"}
