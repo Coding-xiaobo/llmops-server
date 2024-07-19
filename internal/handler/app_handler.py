@@ -2,13 +2,16 @@ import os
 import uuid
 from dataclasses import dataclass
 from operator import itemgetter
+from typing import Dict, Any
 
 from injector import inject
 from uuid import UUID
 
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import FileChatMessageHistory
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.memory import BaseMemory
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda, RunnableConfig
+from langchain_core.tracers import Run
 from openai import OpenAI
 
 from internal.exception import FailException
@@ -25,6 +28,22 @@ from langchain_core.output_parsers import StrOutputParser
 class AppHandler:
     """应用控制器"""
     app_service: AppService
+
+    @classmethod
+    def _load_memory_variables(cls, input: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+        """加载记忆变量"""
+        configurable = config.get("configurable", {})
+        configurable_memory = configurable.get("memory", None)
+        if configurable_memory is not None and isinstance(configurable_memory, BaseMemory):
+            return configurable_memory.load_memory_variables(input)
+        return {"history": []}
+
+    @classmethod
+    def _save_context(cls, run: Run, config: RunnableConfig) -> None:
+        configurable = config.get("configurable", {})
+        configurable_memory = configurable.get("memory", None)
+        if configurable_memory is not None and isinstance(configurable_memory, BaseMemory):
+            configurable_memory.save_context(run.inputs, run.outputs)
 
     def create_app(self):
         """调用服务创建新的APP记录"""
@@ -66,13 +85,15 @@ class AppHandler:
         llm = ChatOpenAI(model="gpt-3.5-turbo-16k")
 
         # 4.创建链应用
-        chain = RunnablePassthrough.assign(
-            history=RunnableLambda(memory.load_memory_variables) | itemgetter("history")
-        ) | prompt | llm | StrOutputParser()
+        chain = (
+            (RunnablePassthrough.assign(
+                history=RunnableLambda(self._load_memory_variables) | itemgetter("history")
+            ) | prompt | llm | StrOutputParser()).
+            with_listeners(on_end=self._save_context)
+        )
 
         # 5.调用链生成内容
         chain_input = {"query": req.query.data}
-        content = chain.invoke(chain_input)
-        memory.save_context(chain_input, {"output": content})
+        content = chain.invoke(chain_input, config={"configurable": {"memory": memory}})
 
         return success_json({"content": content})
