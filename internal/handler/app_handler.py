@@ -9,6 +9,7 @@ from uuid import UUID
 
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import FileChatMessageHistory
+from langchain_core.documents import Document
 from langchain_core.memory import BaseMemory
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda, RunnableConfig
 from langchain_core.tracers import Run
@@ -17,6 +18,7 @@ from openai import OpenAI
 from internal.exception import FailException
 from internal.schema.app_schema import CompletionReq
 from internal.service import AppService
+from internal.service.vector_database_service import VectorDatabaseService
 from pkg.response import success_json, validate_error_json, success_message
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
@@ -28,6 +30,7 @@ from langchain_core.output_parsers import StrOutputParser
 class AppHandler:
     """应用控制器"""
     app_service: AppService
+    vector_database_service: VectorDatabaseService
 
     @classmethod
     def _load_memory_variables(cls, input: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -69,8 +72,9 @@ class AppHandler:
         if not req.validate():
             return validate_error_json(req.errors)
         # 2.创建prompt与记忆
+        system_prompt = "你是一个强大的聊天机器人，能根据对应的上下文和历史对话信息回复用户问题。\n\n<context>{context}</context>"
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "你是一个强大的聊天机器人，能根据用户的提问回复对应的问题"),
+            ("system", system_prompt),
             MessagesPlaceholder("history"),
             ("human", "{query}"),
         ])
@@ -85,9 +89,11 @@ class AppHandler:
         llm = ChatOpenAI(model="gpt-3.5-turbo-16k")
 
         # 4.创建链应用
+        retriever = self.vector_database_service.get_retriever() | self.vector_database_service.combine_documents
         chain = (
             (RunnablePassthrough.assign(
-                history=RunnableLambda(self._load_memory_variables) | itemgetter("history")
+                history=RunnableLambda(self._load_memory_variables) | itemgetter("history"),
+                context=itemgetter("query") | retriever
             ) | prompt | llm | StrOutputParser()).
             with_listeners(on_end=self._save_context)
         )
@@ -97,3 +103,8 @@ class AppHandler:
         content = chain.invoke(chain_input, config={"configurable": {"memory": memory}})
 
         return success_json({"content": content})
+
+    @classmethod
+    def _combine_documents(cls, documents: list[Document]) -> str:
+        """将传入的文档列表合并成字符串"""
+        return "\n\n".join([document.page_content for document in documents])
