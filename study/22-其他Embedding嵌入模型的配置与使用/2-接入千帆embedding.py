@@ -5,12 +5,13 @@
 @Author :xiaobo
 @File   :2-接入千帆embedding.py
 """
+
 import dotenv
 from langchain_community.embeddings.baidu_qianfan_endpoint import QianfanEmbeddingsEndpoint
 
 dotenv.load_dotenv()
 
-embeddings = QianfanEmbeddingsEndpoint(model="bge-large-zh")
+embeddings = QianfanEmbeddingsEndpoint()
 
 query_vector = embeddings.embed_query("我叫赵博祺，我喜欢打篮球游泳")
 
