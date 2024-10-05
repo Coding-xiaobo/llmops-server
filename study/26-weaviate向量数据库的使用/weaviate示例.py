@@ -41,7 +41,7 @@ metadatas = [
 ]
 
 # 2.创建连接客户端
-client = weaviate.connect_to_local("127.0.0.1", "8080")
+client = weaviate.connect_to_local(host="139.9.211.35", port=8080)
 embedding = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # 3.创建LangChain向量数据库实例
