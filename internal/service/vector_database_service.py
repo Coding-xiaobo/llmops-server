@@ -19,7 +19,9 @@ from weaviate import WeaviateClient
 @inject
 class VectorDatabaseService:
     """向量数据库服务"""
+    # 向量数据库客户端
     client: WeaviateClient
+    # 向量数据库示例
     vector_store: WeaviateVectorStore
 
     def __init__(self):
